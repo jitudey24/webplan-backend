@@ -1,20 +1,19 @@
+
 /**
  * One-time secure admin initialization script.
  *
- * Usage:  npm run create-admin
+ * Usage: npm run create-admin
  *
- * Reads ADMIN_NAME, ADMIN_EMAIL and ADMIN_PASSWORD from .env (never from the API
- * or the frontend) and creates the first admin account through Better Auth's
- * server-side createUser API. Ordinary users can NEVER promote themselves.
- *
- * - If the admin already exists, the script does nothing (idempotent, no overwrite).
- * - If the email exists as a non-admin user, the script aborts with a message.
+ * Reads ADMIN_NAME, ADMIN_EMAIL and ADMIN_PASSWORD from .env
+ * and creates the first admin account through Better Auth.
  */
-require("dotenv").config();
 
-const { connectDB, closeDB } = require("../src/config/db");
-const { initAuth } = require("../src/lib/auth");
-const { isNonEmptyString } = require("../src/utils/helpers");
+import dotenv from "dotenv";
+import { connectDB, closeDB } from "../src/config/db.js";
+import { initAuth } from "../src/lib/auth.js";
+import { isNonEmptyString } from "../src/utils/helpers.js";
+
+dotenv.config();
 
 const createAdmin = async () => {
   let exitCode = 0;
@@ -25,10 +24,18 @@ const createAdmin = async () => {
     const password = process.env.ADMIN_PASSWORD;
 
     const missing = [];
-    if (!isNonEmptyString(name, 2, 50)) missing.push("ADMIN_NAME");
-    if (!isNonEmptyString(email, 5, 100) || !email.includes("@"))
+
+    if (!isNonEmptyString(name, 2, 50)) {
+      missing.push("ADMIN_NAME");
+    }
+
+    if (!isNonEmptyString(email, 5, 100) || !email.includes("@")) {
       missing.push("ADMIN_EMAIL (must be a valid email)");
-    if (!isNonEmptyString(password, 8)) missing.push("ADMIN_PASSWORD (min 8 chars)");
+    }
+
+    if (!isNonEmptyString(password, 8)) {
+      missing.push("ADMIN_PASSWORD (min 8 chars)");
+    }
 
     if (missing.length > 0) {
       throw new Error(
@@ -40,13 +47,24 @@ const createAdmin = async () => {
     const db = await connectDB();
     const auth = initAuth(db, null);
 
-    // Server-side creation through Better Auth (handles password hashing, role field, etc.)
+    // Server-side creation through Better Auth
     await auth.api.createUser({
-      body: { name: name.trim(), email: email.trim().toLowerCase(), password, role: "admin" },
+      body: {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        role: "admin",
+      },
     });
 
-    console.log(`✅ Admin created successfully: ${email.trim().toLowerCase()}`);
-    console.log("   You can now log in with this account through /api/auth/sign-in/email");
+    console.log(
+      `✅ Admin created successfully: ${email.trim().toLowerCase()}`
+    );
+
+    console.log(
+      "   You can now log in with this account through /api/auth/sign-in/email"
+    );
+
   } catch (error) {
     const message = error?.message || String(error);
     const bodyMessage = error?.body?.message;
@@ -57,17 +75,25 @@ const createAdmin = async () => {
       (bodyMessage && bodyMessage.toLowerCase().includes("already"))
     ) {
       console.log(
-        `ℹ️  An account with this email already exists. No changes were made.`
+        "ℹ️ An account with this email already exists. No changes were made."
       );
+
       console.log(
         "   If it is not an admin yet, promote it with the admin role API by another admin."
       );
+
     } else {
       console.error("❌ Admin creation failed:", message);
       exitCode = 1;
     }
+
   } finally {
-    await closeDB();
+    try {
+      await closeDB();
+    } catch (error) {
+      console.error("❌ Database closing failed:", error.message);
+      exitCode = 1;
+    }
   }
 
   process.exit(exitCode);

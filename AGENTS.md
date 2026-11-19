@@ -1,15 +1,14 @@
 # AGENTS.md
 
 WedPlan Server — Express 5 + MongoDB (Atlas) backend for a wedding-service marketplace.
-CommonJS (`"type": "commonjs"`), plain JavaScript, no TypeScript build.
+ES Modules (`"type": "module"`), plain JavaScript, no TypeScript build. All relative
+imports must include the `.js` extension.
 
 ## Entrypoint (only one is real)
 
-- **`index.js` is the only working entrypoint** (`npm start` / `npm run dev`).
-- `server.js` and `routes/index.js` are **stale/broken leftovers** — `server.js` uses ESM
-  `import` in a CommonJS package and imports a nonexistent `./lib/auth.js`;
-  `routes/index.js` requires `./config/db` (path doesn't exist) and references another
-  project ("HireLoop"). Do not edit, run, or "fix" them unless explicitly asked.
+- **`index.js` is the only entrypoint** (`npm start` / `npm run dev`).
+- The old duplicate servers `server.js` and `routes/index.js` were removed during the
+  CommonJS → ESM migration (both were broken and would have bound the same port).
 - Actual route modules live in `src/routes/` and are mounted inside `index.js`
   (there is no `src/app.js`). Startup order matters:
   `connectDB()` → `initAuth(db, client)` → mount `/api/auth/*splat` → `express.json()`

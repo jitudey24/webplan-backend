@@ -1,3 +1,4 @@
+
 /**
  * Service routes.
  * - Only APPROVED vendors can create/manage services.
@@ -6,20 +7,20 @@
  * - Public list only shows available services from approved vendors.
  */
 
-const express = require("express");
+import express from "express";
 
-const { getDB } = require("../config/db");
-const {
+import { getDB } from "../config/db.js";
+import {
   requireVendor,
   authenticateUser,
   requireAdmin,
-} = require("../middleware/auth");
+} from "../middleware/auth.js";
 
-const {
+import {
   toId,
   isNonEmptyString,
   isNonNegativeNumber,
-} = require("../utils/helpers");
+} from "../utils/helpers.js";
 
 const router = express.Router();
 
@@ -186,8 +187,7 @@ router.get("/", async (req, res, next) => {
       .project({ _id: 1, id: 1 })
       .toArray();
 
-    // Build a de-duplicated array of plain STRINGS — the services collection
-    // stores vendorId as a string (hex ObjectId or Better Auth id string).
+    // Build a de-duplicated array of plain STRINGS.
     const approvedVendorIds = [
       ...new Set(
         approvedVendors.flatMap((vendor) => {
@@ -197,7 +197,9 @@ router.get("/", async (req, res, next) => {
               : vendor._id
                 ? String(vendor._id)
                 : null;
+
           const idStr = vendor.id ? String(vendor.id) : null;
+
           return [hex, idStr].filter(Boolean);
         }),
       ),
@@ -216,7 +218,9 @@ router.get("/", async (req, res, next) => {
       const approvedObjectIds = approvedVendorIds
         .filter((id) => /^[a-f\d]{24}$/i.test(id))
         .map(toId);
+
       query.$and = query.$and || [];
+
       query.$and.push({
         $or: [
           { vendorId: { $in: approvedVendorIds } },
@@ -237,11 +241,14 @@ router.get("/", async (req, res, next) => {
       query.category = { $regex: new RegExp(cat, "i") };
     }
 
-    // Search query filter (matches name, title, description, or location)
+    // Search query filter
     const search = req.query.search || req.query.q;
+
     if (search && String(search).trim()) {
       const sRegex = new RegExp(String(search).trim(), "i");
+
       query.$and = query.$and || [];
+
       query.$and.push({
         $or: [
           { name: { $regex: sRegex } },
@@ -265,6 +272,7 @@ router.get("/", async (req, res, next) => {
       query.price = query.price || {};
       query.price.$gte = Number(req.query.minPrice);
     }
+
     if (req.query.maxPrice !== undefined && req.query.maxPrice !== "") {
       query.price = query.price || {};
       query.price.$lte = Number(req.query.maxPrice);
@@ -272,6 +280,7 @@ router.get("/", async (req, res, next) => {
 
     // Sorting
     let sort = { createdAt: -1 };
+
     if (req.query.sort === "price-low" || req.query.sort === "price_asc") {
       sort = { price: 1 };
     } else if (
@@ -291,13 +300,14 @@ router.get("/", async (req, res, next) => {
       .limit(limit)
       .toArray();
 
-    // Populate vendor info for each service if missing
+    // Populate vendor info for each service if missing.
     for (const s of services) {
       if (s.vendorId && !s.vendor) {
         try {
           const v = await db.collection("user").findOne({
             $or: [{ _id: toId(s.vendorId) }, { id: s.vendorId }],
           });
+
           if (v) {
             s.vendor = {
               id: v.id || (v._id ? v._id.toString() : ""),
@@ -330,6 +340,7 @@ router.get("/", async (req, res, next) => {
 router.get("/mine", requireVendor, async (req, res, next) => {
   try {
     const db = getDB();
+
     const vendorIdStr = String(req.user.id ?? req.user._id ?? "");
 
     const services = await db
@@ -360,14 +371,12 @@ router.get("/mine", requireVendor, async (req, res, next) => {
 const loadOwnService = async (req, res) => {
   const db = getDB();
 
-  const service = await db
-    .collection("services")
-    .findOne({
-      $or: [
-        { _id: toId(req.params.id) },
-        { _id: req.params.id },
-      ],
-    });
+  const service = await db.collection("services").findOne({
+    $or: [
+      { _id: toId(req.params.id) },
+      { _id: req.params.id },
+    ],
+  });
 
   if (!service) {
     res.status(404).json({
@@ -379,6 +388,7 @@ const loadOwnService = async (req, res) => {
   }
 
   const isAdmin = req.user.role === "admin";
+
   const userIdStr = String(req.user.id ?? req.user._id ?? "");
   const isOwner = String(service.vendorId) === userIdStr;
 
@@ -441,7 +451,6 @@ router.patch("/:id", requireVendor, async (req, res, next) => {
     // Multiple image support.
     if (req.body.images !== undefined) {
       updates.images = req.body.images.map((image) => image.trim());
-
       updates.image = updates.images[0] || "";
     } else if (req.body.image !== undefined) {
       // Backward compatibility with single image.
@@ -494,6 +503,7 @@ router.patch("/:id/availability", requireVendor, async (req, res, next) => {
         message: "Send { availability: true } or { availability: false }.",
       });
     }
+
     if (req.body.availability === true) {
       const db = getDB();
 
@@ -511,11 +521,17 @@ router.patch("/:id/availability", requireVendor, async (req, res, next) => {
 
       if (!isPremium) {
         const vendorIdStr = String(req.user.id ?? req.user._id ?? "");
-        const activeServices = await db.collection("services").countDocuments({
-          $or: [{ vendorId: vendorIdStr }, { vendorId: toId(vendorIdStr) }],
-          availability: true,
-          _id: { $ne: service._id },
-        });
+
+        const activeServices = await db
+          .collection("services")
+          .countDocuments({
+            $or: [
+              { vendorId: vendorIdStr },
+              { vendorId: toId(vendorIdStr) },
+            ],
+            availability: true,
+            _id: { $ne: service._id },
+          });
 
         if (activeServices >= 3) {
           return res.status(403).json({
@@ -558,7 +574,10 @@ router.delete("/:id", authenticateUser, async (req, res, next) => {
   try {
     if (req.user.role === "admin") {
       // Admin can delete any service.
-    } else if (req.user.role === "vendor" && req.user.vendorApproved === true) {
+    } else if (
+      req.user.role === "vendor" &&
+      req.user.vendorApproved === true
+    ) {
       const service = await loadOwnService(req, res);
 
       if (!service) return;
@@ -651,6 +670,7 @@ router.patch("/:id/review", requireAdmin, async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
   try {
     const db = getDB();
+
     const service = await db.collection("services").findOne({
       $or: [
         { _id: toId(req.params.id) },
@@ -665,9 +685,11 @@ router.get("/:id", async (req, res, next) => {
       });
     }
 
-    // Attach vendor details if available
+    // Attach vendor details if available.
     let vendor = null;
+
     const vId = service.vendorId ? String(service.vendorId) : "";
+
     if (vId) {
       const vendorUser = await db.collection("user").findOne({
         $or: [
@@ -679,12 +701,16 @@ router.get("/:id", async (req, res, next) => {
 
       if (vendorUser) {
         vendor = {
-          id: vendorUser._id ? vendorUser._id.toString() : vendorUser.id,
+          id: vendorUser._id
+            ? vendorUser._id.toString()
+            : vendorUser.id,
           name: vendorUser.name,
           email: vendorUser.email,
           image: vendorUser.image || null,
           businessName:
-            vendorUser.businessName || vendorUser.studioName || vendorUser.name,
+            vendorUser.businessName ||
+            vendorUser.studioName ||
+            vendorUser.name,
         };
       }
     }
@@ -694,14 +720,19 @@ router.get("/:id", async (req, res, next) => {
         role: "vendor",
         vendorApproved: true,
       });
+
       if (defaultVendor) {
         vendor = {
-          id: defaultVendor._id ? defaultVendor._id.toString() : defaultVendor.id,
+          id: defaultVendor._id
+            ? defaultVendor._id.toString()
+            : defaultVendor.id,
           name: defaultVendor.name,
           email: defaultVendor.email,
           image: defaultVendor.image || null,
           businessName:
-            defaultVendor.businessName || defaultVendor.studioName || defaultVendor.name,
+            defaultVendor.businessName ||
+            defaultVendor.studioName ||
+            defaultVendor.name,
         };
       }
     }
@@ -718,4 +749,4 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-module.exports = router;
+export default router;

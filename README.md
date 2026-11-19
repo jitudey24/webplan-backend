@@ -128,32 +128,40 @@ WedPlan-Server/
 │
 ├── src/
 │   ├── config/
+│   │   ├── db.js
+│   │   └── indexes.js
+│   │
+│   ├── lib/
+│   │   └── auth.js
 │   │
 │   ├── middleware/
-│   │   ├── auth.middleware.js
-│   │   └── role.middleware.js
+│   │   └── auth.js
 │   │
 │   ├── routes/
-│   │   ├── auth.routes.js
-│   │   ├── user.routes.js
-│   │   ├── service.routes.js
-│   │   ├── booking.routes.js
-│   │   ├── admin.routes.js
-│   │   ├── payment.routes.js
-│   │   └── transaction.routes.js
+│   │   ├── profile.js
+│   │   ├── services.js
+│   │   ├── bookings.js
+│   │   ├── admin.js
+│   │   ├── planner.js
+│   │   └── subscription.js
 │   │
-│   ├── utils/
-│   │
-│   └── app.js
+│   └── utils/
+│       ├── helpers.js
+│       └── subscription.js
+│
+├── scripts/
+│   ├── create-admin.js
+│   ├── smoke-test.js
+│   └── sync-services.js
 │
 ├── .env
 ├── .gitignore
 ├── package.json
-├── server.js
+├── index.js
 └── README.md
 ```
 
-*Note: This is a suggested structure. Adjust it to match the actual backend implementation.*
+*Note: This reflects the actual backend implementation (ES Modules).*"
 
 ---
 

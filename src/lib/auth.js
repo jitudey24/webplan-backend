@@ -10,9 +10,9 @@
  *    (Better Auth admin plugin) or the protected create-admin script.
  *  - vendorApproved is an admin-controlled flag required for vendor access.
  */
-const { betterAuth } = require("better-auth");
-const { mongodbAdapter } = require("@better-auth/mongo-adapter");
-const { admin, jwt } = require("better-auth/plugins");
+import { betterAuth } from "better-auth";
+import { mongodbAdapter } from "@better-auth/mongo-adapter";
+import { admin, jwt } from "better-auth/plugins";
 
 const ROLES = ["customer", "vendor", "admin"];
 
@@ -136,4 +136,4 @@ const getAuth = () => {
   return auth;
 };
 
-module.exports = { initAuth, getAuth, ROLES };
+export { initAuth, getAuth, ROLES };

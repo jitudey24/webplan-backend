@@ -1,3 +1,4 @@
+
 /**
  * Authentication & authorization middleware for WedPlan.
  *
@@ -12,12 +13,13 @@
  *  - Role gate built on top of authenticateUser.
  *  - Vendors must additionally be approved by an admin (vendorApproved === true).
  */
-const { fromNodeHeaders } = require("better-auth/node");
-const { createRemoteJWKSet, jwtVerify } = require("jose");
 
-const { getAuth } = require("../lib/auth");
-const { getDB } = require("../config/db");
-const { sanitizeUser, toId } = require("../utils/helpers");
+import { fromNodeHeaders } from "better-auth/node";
+import { createRemoteJWKSet, jwtVerify } from "jose";
+
+import { getAuth } from "../lib/auth.js";
+import { getDB } from "../config/db.js";
+import { sanitizeUser, toId } from "../utils/helpers.js";
 
 let jwks = null;
 
@@ -84,6 +86,7 @@ const authenticateUser = async (req, res, next) => {
               ? dbUser._id.toHexString()
               : String(dbUser._id)
             : payload.sub);
+
         user = { ...dbUser, id };
       }
     } else {
@@ -96,6 +99,7 @@ const authenticateUser = async (req, res, next) => {
         // Better Auth session user already has an `id` string.
         // If role is missing (e.g., older Better Auth version), default to "customer".
         const rawUser = session.user;
+
         user = {
           ...rawUser,
           id: rawUser.id ?? rawUser._id ?? "",
@@ -141,6 +145,7 @@ const requireVendorApproved = (req, res, next) => {
         "Your vendor account has not been approved by an admin yet. Please wait for approval.",
     });
   }
+
   next();
 };
 
@@ -160,7 +165,7 @@ const requireVendor = [
 /** Admin-only routes. */
 const requireAdmin = [authenticateUser, requireRole("admin")];
 
-module.exports = {
+export {
   authenticateUser,
   requireRole,
   requireVendorApproved,

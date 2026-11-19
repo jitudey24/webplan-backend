@@ -1,3 +1,4 @@
+
 /**
  * Planner routes — the signed-in user's Wedding Budget and Checklist.
  *
@@ -8,10 +9,11 @@
  * Every document is keyed by `_id = <user id string>` which makes reads and
  * upserts race-free without needing an extra unique index.
  */
-const express = require("express");
 
-const { getDB } = require("../config/db");
-const { requireAuth } = require("../middleware/auth");
+import express from "express";
+
+import { getDB } from "../config/db.js";
+import { requireAuth } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -29,7 +31,9 @@ const asNumber = (value, fallback = 0) => {
 
 const clampMoney = (value, fallback) => {
   const n = asNumber(value, fallback);
+
   if (n < 0) return 0;
+
   // Guards against absurd values blowing up the UI.
   return Math.min(n, 1_000_000_000_000);
 };
@@ -74,7 +78,15 @@ const sanitizeChecklist = (body) => {
 
   for (const [key, value] of Object.entries(source)) {
     if (count >= MAX_CHECKLIST_KEYS) break;
-    if (typeof key !== "string" || !key.trim() || key.length > MAX_ID_LENGTH) continue;
+
+    if (
+      typeof key !== "string" ||
+      !key.trim() ||
+      key.length > MAX_ID_LENGTH
+    ) {
+      continue;
+    }
+
     // Only boolean values are stored — truthy junk never reaches the DB.
     if (value === true || value === false) {
       done[key] = value;
@@ -97,7 +109,10 @@ router.get("/", requireAuth, async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      budget: doc?.budget || { totalBudget: DEFAULT_TOTAL_BUDGET, items: [] },
+      budget: doc?.budget || {
+        totalBudget: DEFAULT_TOTAL_BUDGET,
+        items: [],
+      },
       checklist: doc?.checklist || {},
     });
   } catch (error) {
@@ -112,7 +127,10 @@ router.get("/budget", requireAuth, async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      budget: doc?.budget || { totalBudget: DEFAULT_TOTAL_BUDGET, items: [] },
+      budget: doc?.budget || {
+        totalBudget: DEFAULT_TOTAL_BUDGET,
+        items: [],
+      },
     });
   } catch (error) {
     next(error);
@@ -132,6 +150,7 @@ router.get("/checklist", requireAuth, async (req, res, next) => {
     next(error);
   }
 });
+
 /** PUT /api/v1/planner/budget — replace the budget (upsert). */
 router.put("/budget", requireAuth, async (req, res, next) => {
   try {
@@ -140,8 +159,11 @@ router.put("/budget", requireAuth, async (req, res, next) => {
 
     await db.collection("planner").updateOne(
       { _id: userIdOf(req) },
-      { $set: { budget, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
-      { upsert: true },
+      {
+        $set: { budget, updatedAt: new Date() },
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true }
     );
 
     res.status(200).json({
@@ -162,8 +184,11 @@ router.put("/checklist", requireAuth, async (req, res, next) => {
 
     await db.collection("planner").updateOne(
       { _id: userIdOf(req) },
-      { $set: { checklist, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
-      { upsert: true },
+      {
+        $set: { checklist, updatedAt: new Date() },
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true }
     );
 
     res.status(200).json({
@@ -176,4 +201,4 @@ router.put("/checklist", requireAuth, async (req, res, next) => {
   }
 });
 
-module.exports = router;
+export default router;

@@ -1,15 +1,17 @@
+
 /**
  * Admin routes - every route requires an authenticated admin session.
  * Role changes and vendor approvals go through Better Auth's admin plugin
  * APIs, so all privilege checks are enforced server-side.
  */
-const express = require("express");
-const { fromNodeHeaders } = require("better-auth/node");
 
-const { getAuth } = require("../lib/auth");
-const { getDB } = require("../config/db");
-const { requireAdmin } = require("../middleware/auth");
-const { sanitizeUser, toId } = require("../utils/helpers");
+import express from "express";
+import { fromNodeHeaders } from "better-auth/node";
+
+import { getAuth } from "../lib/auth.js";
+import { getDB } from "../config/db.js";
+import { requireAdmin } from "../middleware/auth.js";
+import { sanitizeUser, toId } from "../utils/helpers.js";
 
 const router = express.Router();
 
@@ -107,20 +109,16 @@ router.patch(
         });
       }
 
-      await db
-        .collection("user")
-        .updateOne(
-          { _id: user._id },
-          { $set: { vendorApproved: approved, updatedAt: new Date() } }
-        );
+      await db.collection("user").updateOne(
+        { _id: user._id },
+        { $set: { vendorApproved: approved, updatedAt: new Date() } }
+      );
 
       // Keep the service catalog consistent with vendor approval
-      await db
-        .collection("services")
-        .updateMany(
-          { vendorId: user._id.toHexString() },
-          { $set: { availability: approved, updatedAt: new Date() } }
-        );
+      await db.collection("services").updateMany(
+        { vendorId: user._id.toHexString() },
+        { $set: { availability: approved, updatedAt: new Date() } }
+      );
 
       res.status(200).json({
         success: true,
@@ -179,6 +177,7 @@ router.get("/services", requireAdmin, async (req, res, next) => {
 router.post("/users/:id/ban", requireAdmin, async (req, res, next) => {
   try {
     const auth = getAuth();
+
     await auth.api.banUser({
       headers: headers(req),
       body: {
@@ -198,6 +197,7 @@ router.post("/users/:id/ban", requireAdmin, async (req, res, next) => {
 router.post("/users/:id/unban", requireAdmin, async (req, res, next) => {
   try {
     const auth = getAuth();
+
     await auth.api.unbanUser({
       headers: headers(req),
       body: { userId: req.params.id },
@@ -220,6 +220,7 @@ router.delete("/users/:id", requireAdmin, async (req, res, next) => {
     }
 
     const auth = getAuth();
+
     await auth.api.removeUser({
       headers: headers(req),
       body: { userId: req.params.id },
@@ -262,7 +263,10 @@ router.get("/transactions", requireAdmin, async (req, res, next) => {
         title: b.serviceName || "Wedding Service Reservation",
         customer: b.customerName || b.customerId || "Couple",
         vendor: b.vendorId || "Vendor",
-        amount: typeof b.servicePrice === "number" ? b.servicePrice : Number(b.price) || 0,
+        amount:
+          typeof b.servicePrice === "number"
+            ? b.servicePrice
+            : Number(b.price) || 0,
         currency: "BDT",
         status: b.status || "pending",
         date: b.createdAt || new Date(),
@@ -273,6 +277,7 @@ router.get("/transactions", requireAdmin, async (req, res, next) => {
     // Map subscriptions
     for (const v of vendorsWithSub) {
       const isYearly = v.subscription?.plan === "premium_yearly";
+
       transactions.push({
         id: `sub-${v._id.toHexString()}`,
         type: "subscription",
@@ -284,7 +289,10 @@ router.get("/transactions", requireAdmin, async (req, res, next) => {
         amount: isYearly ? 290 : 29,
         currency: "USD",
         status: v.subscription?.status || "active",
-        date: v.subscription?.startedAt || v.subscription?.updatedAt || new Date(),
+        date:
+          v.subscription?.startedAt ||
+          v.subscription?.updatedAt ||
+          new Date(),
       });
     }
 
@@ -316,4 +324,4 @@ router.get("/transactions", requireAdmin, async (req, res, next) => {
   }
 });
 
-module.exports = router;
+export default router;

@@ -1,17 +1,31 @@
-require("dotenv").config();
 
-const express = require("express");
-const cors = require("cors");
-const { toNodeHandler } = require("better-auth/node");
+import dotenv from "dotenv";
+dotenv.config();
 
-const { connectDB, getDB, closeDB, getClient } = require("./src/config/db");
-const { ensureIndexes } = require("./src/config/indexes");
-const { initAuth } = require("./src/lib/auth");
+import express from "express";
+import cors from "cors";
+import { toNodeHandler } from "better-auth/node";
+
+import {
+  connectDB,
+  getDB,
+  closeDB,
+  getClient,
+} from "./src/config/db.js";
+
+import { ensureIndexes } from "./src/config/indexes.js";
+import { initAuth } from "./src/lib/auth.js";
+
+import profileRoutes from "./src/routes/profile.js";
+import servicesRoutes from "./src/routes/services.js";
+import bookingRoutes from "./src/routes/bookings.js";
+import adminRoutes from "./src/routes/admin.js";
+import plannerRoutes from "./src/routes/planner.js";
+import subscriptionRoutes from "./src/routes/subscription.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware - CORS with credentials for the frontend origin
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || true,
@@ -19,29 +33,24 @@ app.use(
   })
 );
 
-// Start Server - MongoDB MUST connect successfully before Express starts
 const startServer = async () => {
   try {
     const db = await connectDB();
 
-    // Better Auth on the existing MongoDB connection
-    const auth = initAuth(db, getClient());
+    console.log("MongoDB Connected Successfully!");
 
-    // Better Auth handler MUST be mounted before express.json() - it parses its own body
+    const auth = await initAuth(db, getClient());
+
     app.all("/api/auth/*splat", toNodeHandler(auth));
 
-    // Body parsing for the API routes
     app.use(express.json());
 
-    // Database indexes (services, bookings, session TTL)
     await ensureIndexes(db);
 
-    // Root API
     app.get("/", (req, res) => {
       res.send("Welcome to WedPlan Server!");
     });
 
-    // Server Health
     app.get("/health", (req, res) => {
       res.status(200).json({
         success: true,
@@ -49,11 +58,9 @@ const startServer = async () => {
       });
     });
 
-    // MongoDB Test
     app.get("/test-db", async (req, res) => {
       try {
         const database = getDB();
-
         await database.command({ ping: 1 });
 
         res.status(200).json({
@@ -69,16 +76,14 @@ const startServer = async () => {
       }
     });
 
-    // Protected API routes
-    app.use("/api/v1/profile", require("./src/routes/profile"));
-    app.use("/api/v1/services", require("./src/routes/services"));
-    app.use("/services", require("./src/routes/services"));
-    app.use("/api/v1/bookings", require("./src/routes/bookings"));
-    app.use("/api/v1/admin", require("./src/routes/admin"));
-    app.use("/api/v1/planner", require("./src/routes/planner"));
-    app.use("/api/v1/subscription", require("./src/routes/subscription"));
+    app.use("/api/v1/profile", profileRoutes);
+    app.use("/api/v1/services", servicesRoutes);
+    app.use("/services", servicesRoutes);
+    app.use("/api/v1/bookings", bookingRoutes);
+    app.use("/api/v1/admin", adminRoutes);
+    app.use("/api/v1/planner", plannerRoutes);
+    app.use("/api/v1/subscription", subscriptionRoutes);
 
-    // 404 for unknown API routes
     app.use((req, res) => {
       res.status(404).json({
         success: false,
@@ -86,9 +91,8 @@ const startServer = async () => {
       });
     });
 
-    // Central error handler - safe error responses (no stack leaks)
     app.use((error, req, res, next) => {
-      console.error("❌ API Error:", error.message);
+      console.error("API Error:", error.message);
 
       const status =
         typeof error?.status === "number"
@@ -107,12 +111,11 @@ const startServer = async () => {
       console.log(`WedPlan Server running on port ${PORT}`);
     });
   } catch (error) {
-    console.error("❌ Server Startup Failed:", error.message);
+    console.error("Server Startup Failed:", error);
     process.exit(1);
   }
 };
 
-// Graceful Shutdown
 process.on("SIGINT", async () => {
   await closeDB();
   process.exit(0);

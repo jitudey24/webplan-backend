@@ -1,4 +1,5 @@
-const { MongoClient, ServerApiVersion } = require("mongodb");
+
+import { MongoClient, ServerApiVersion } from "mongodb";
 
 let client = null;
 let db = null;
@@ -7,12 +8,9 @@ let db = null;
  * Builds the MongoDB connection string from environment variables.
  *
  * Supports the Atlas template format:
- *   DB_URI=mongodb+srv://<db_username>:<db_password>@cluster0.xxxxx.mongodb.net/...
- * The <db_username> and <db_password> placeholders are filled automatically
- * from DB_USER and DB_PASSWORD (the password is URL-encoded so special
- * characters like @ : / # ? work safely).
+ * DB_URI=mongodb+srv://<db_username>:<db_password>@cluster0.xxxxx.mongodb.net/...
  *
- * A full URI with credentials already embedded is also supported and used as-is.
+ * Also supports a full URI with credentials already embedded.
  */
 const buildUri = () => {
   const dbUser = process.env.DB_USER;
@@ -21,6 +19,7 @@ const buildUri = () => {
 
   // 1. Make sure the required variables exist
   const missing = [];
+
   if (!dbUri) missing.push("DB_URI");
   if (!dbUser) missing.push("DB_USER");
   if (!dbPassword) missing.push("DB_PASSWORD");
@@ -32,7 +31,7 @@ const buildUri = () => {
     );
   }
 
-  // 2. Detect unfilled placeholder values in the credentials (e.g. "<your-atlas-username>")
+  // 2. Detect unfilled placeholder values
   for (const [name, value] of [
     ["DB_USER", dbUser],
     ["DB_PASSWORD", dbPassword],
@@ -48,28 +47,30 @@ const buildUri = () => {
   let uri = dbUri;
 
   if (uri.includes("<db_username>") || uri.includes("<db_password>")) {
-    // Atlas template: fill in the placeholders from DB_USER / DB_PASSWORD
+    // Atlas template: fill in the placeholders
     uri = uri
       .replace("<db_username>", encodeURIComponent(dbUser))
       .replace("<db_password>", encodeURIComponent(dbPassword));
   } else if (!uri.includes("@")) {
-    // URI has no credentials embedded: build them from DB_USER / DB_PASSWORD
+    // URI has no credentials embedded
     const scheme = uri.startsWith("mongodb+srv://")
       ? "mongodb+srv://"
       : uri.startsWith("mongodb://")
         ? "mongodb://"
         : "mongodb+srv://";
-    const rest = uri.startsWith(scheme) ? uri.slice(scheme.length) : uri;
+
+    const rest = uri.startsWith(scheme)
+      ? uri.slice(scheme.length)
+      : uri;
+
     uri = `${scheme}${encodeURIComponent(dbUser)}:${encodeURIComponent(dbPassword)}@${rest}`;
   }
-  // Otherwise the URI already contains credentials and is used as-is.
 
   return uri;
 };
 
 /**
  * Connects to MongoDB Atlas and verifies the connection with a real ping command.
- * Throws (and therefore prevents the Express server from starting) on failure.
  */
 const connectDB = async () => {
   const uri = buildUri();
@@ -80,7 +81,6 @@ const connectDB = async () => {
       strict: true,
       deprecationErrors: true,
     },
-    // Fail fast with a meaningful error if the cluster cannot be reached
     serverSelectionTimeoutMS: 10000,
   });
 
@@ -89,7 +89,7 @@ const connectDB = async () => {
 
     db = client.db(process.env.DB_NAME || "WedPlan");
 
-    // Real connectivity check - not a fake success message
+    // Real connectivity check
     await db.command({ ping: 1 });
 
     console.log("MongoDB Connected Successfully!");
@@ -101,7 +101,7 @@ const connectDB = async () => {
   }
 };
 
-/** Returns the connected database. Throws if connectDB() has not succeeded yet. */
+/** Returns the connected database. */
 const getDB = () => {
   if (!db) {
     throw new Error(
@@ -116,14 +116,19 @@ const getDB = () => {
 const closeDB = async () => {
   if (client) {
     await client.close();
+    client = null;
+    db = null;
+
     console.log("MongoDB connection closed.");
   }
 };
 
-module.exports = {
+// ES Module exports
+export {
   connectDB,
   getDB,
   closeDB,
-  getClient: () => client,
   buildUri,
 };
+
+export const getClient = () => client;

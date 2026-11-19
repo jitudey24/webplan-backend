@@ -1,29 +1,35 @@
+
 /**
  * Vendor subscription routes.
  *  - Premium is activated ONLY after a real Stripe Checkout session is
  *    retrieved from Stripe and verified as paid for the current vendor.
  *  - No client-supplied plan/session string can grant Premium by itself.
  */
-const express = require("express");
-const Stripe = require("stripe");
 
-const { getDB } = require("../config/db");
-const { requireVendor } = require("../middleware/auth");
-const { toId } = require("../utils/helpers");
-const {
+import express from "express";
+import Stripe from "stripe";
+
+import { getDB } from "../config/db.js";
+import { requireVendor } from "../middleware/auth.js";
+import { toId } from "../utils/helpers.js";
+import {
   PREMIUM_PLANS,
   isPremiumActive,
-} = require("../utils/subscription");
+} from "../utils/subscription.js";
 
 const router = express.Router();
 
 let stripe = null;
+
 const getStripe = () => {
   if (!stripe) {
     const key = process.env.STRIPE_SECRET_KEY || "";
+
     if (!key) return null;
+
     stripe = new Stripe(key);
   }
+
   return stripe;
 };
 
@@ -34,12 +40,14 @@ const PLANS = {
     interval: "month",
     activeServiceLimit: 3,
   },
+
   premium_monthly: {
     name: "Premium Monthly",
     price: 29,
     interval: "month",
     activeServiceLimit: null,
   },
+
   premium_yearly: {
     name: "Premium Yearly",
     price: 290,
@@ -53,8 +61,12 @@ const resolveVendorId = (user) =>
 
 const getActiveServiceCount = async (db, vendorId) => {
   const vIdStr = String(vendorId);
+
   return db.collection("services").countDocuments({
-    $or: [{ vendorId: vIdStr }, { vendorId: toId(vIdStr) }],
+    $or: [
+      { vendorId: vIdStr },
+      { vendorId: toId(vIdStr) },
+    ],
     availability: true,
   });
 };
@@ -73,10 +85,12 @@ const buildSubscriptionResponse = (subscription, activeServices) => {
     interval: plan.interval,
     activeServiceLimit: plan.activeServiceLimit,
     activeServices,
+
     remainingServices:
       plan.activeServiceLimit === null
         ? null
         : Math.max(0, plan.activeServiceLimit - activeServices),
+
     isPremium: premium,
     expired: PREMIUM_PLANS.includes(subscription?.plan) && !premium,
   };
@@ -98,7 +112,10 @@ const sanitizeCards = (cards) =>
 
 // GET /api/v1/subscription/plans
 router.get("/plans", (req, res) => {
-  res.json({ success: true, plans: PLANS });
+  res.json({
+    success: true,
+    plans: PLANS,
+  });
 });
 
 // GET /api/v1/subscription/mine
@@ -108,7 +125,10 @@ router.get("/mine", requireVendor, async (req, res, next) => {
     const vendorId = resolveVendorId(req.user);
 
     const vendor = await db.collection("user").findOne({
-      $or: [{ _id: toId(vendorId) }, { id: vendorId }],
+      $or: [
+        { _id: toId(vendorId) },
+        { id: vendorId },
+      ],
     });
 
     if (!vendor) {
@@ -122,10 +142,15 @@ router.get("/mine", requireVendor, async (req, res, next) => {
 
     res.json({
       success: true,
+
       subscription: buildSubscriptionResponse(
-        vendor.subscription || { plan: "free", status: "active" },
+        vendor.subscription || {
+          plan: "free",
+          status: "active",
+        },
         activeServices,
       ),
+
       paymentMethods: sanitizeCards(vendor.paymentMethods),
       plans: PLANS,
     });
@@ -141,6 +166,7 @@ router.post(
   async (req, res, next) => {
     try {
       const stripeInstance = getStripe();
+
       if (!stripeInstance) {
         return res.status(503).json({
           success: false,
@@ -149,35 +175,48 @@ router.post(
       }
 
       const requestedPlan = req.body?.planId || req.body?.plan;
+
       const plan = PREMIUM_PLANS.includes(requestedPlan)
         ? requestedPlan
         : "premium_monthly";
+
       const planInfo = PLANS[plan];
 
       const frontendUrl =
         process.env.FRONTEND_URL || "http://localhost:3000";
+
       const vendorId = resolveVendorId(req.user);
 
-      // NOTE: do NOT send `payment_method_types` — Stripe now manages payment
-      // methods from the Dashboard and rejects that parameter with a 400.
+      // NOTE: do NOT send payment_method_types.
       const session = await stripeInstance.checkout.sessions.create({
         line_items: [
           {
             price_data: {
               currency: "usd",
+
               product_data: {
                 name: `WedPlan ${planInfo.name}`,
                 description: `Upgrade to ${planInfo.name} for unlimited listings and full booking access.`,
               },
+
               unit_amount: planInfo.price * 100,
             },
+
             quantity: 1,
           },
         ],
+
         mode: "payment",
+
         customer_email: req.user.email || undefined,
-        metadata: { vendorId, planId: plan },
+
+        metadata: {
+          vendorId,
+          planId: plan,
+        },
+
         success_url: `${frontendUrl}/vendor/subscription?success=true&session_id={CHECKOUT_SESSION_ID}&plan=${plan}`,
+
         cancel_url: `${frontendUrl}/vendor/subscription?canceled=true`,
       });
 
@@ -194,8 +233,6 @@ router.post(
 
 /**
  * Builds the Premium subscription document stored on the vendor's user record.
- * Both the Stripe Checkout flow and the in-app card flow use this so the
- * stored shape (and expiry math) can never drift apart.
  */
 const buildSubscriptionDoc = (plan, payment = {}) => {
   const now = new Date();
@@ -213,12 +250,20 @@ const buildSubscriptionDoc = (plan, payment = {}) => {
     startedAt: now,
     expiresAt,
     paymentStatus: "paid",
-    ...(payment.stripeSessionId ? { stripeSessionId: payment.stripeSessionId } : {}),
-    ...(payment.paymentIntentId ? { paymentIntentId: payment.paymentIntentId } : {}),
+
+    ...(payment.stripeSessionId
+      ? { stripeSessionId: payment.stripeSessionId }
+      : {}),
+
+    ...(payment.paymentIntentId
+      ? { paymentIntentId: payment.paymentIntentId }
+      : {}),
+
     amountPaid:
       typeof payment.amountPaid === "number"
         ? payment.amountPaid
         : PLANS[plan].price,
+
     updatedAt: now,
   };
 };
@@ -227,12 +272,16 @@ const buildSubscriptionDoc = (plan, payment = {}) => {
 const findVendorDoc = async (db, vendorId) =>
   db
     .collection("user")
-    .findOne({ $or: [{ _id: toId(vendorId) }, { id: vendorId }] });
+    .findOne({
+      $or: [
+        { _id: toId(vendorId) },
+        { id: vendorId },
+      ],
+    });
 
 /**
  * Shared activation used by both /verify-stripe-session and /upgrade.
- * The plan and the vendor come from Stripe's session metadata — never from
- * the request body.
+ * The plan and the vendor come from Stripe's session metadata.
  */
 const activatePremium = async (req, res) => {
   const sessionId = req.body?.sessionId;
@@ -245,18 +294,24 @@ const activatePremium = async (req, res) => {
   }
 
   const stripeInstance = getStripe();
+
   if (!stripeInstance) {
     return res.status(503).json({
       success: false,
-      message: "Stripe is not configured on the server. Premium cannot be activated.",
+      message:
+        "Stripe is not configured on the server. Premium cannot be activated.",
     });
   }
 
   let session;
+
   try {
-    session = await stripeInstance.checkout.sessions.retrieve(sessionId.trim());
+    session = await stripeInstance.checkout.sessions.retrieve(
+      sessionId.trim(),
+    );
   } catch (error) {
     console.error("Stripe session retrieval error:", error);
+
     return res.status(400).json({
       success: false,
       message: "Invalid Stripe checkout session.",
@@ -272,6 +327,7 @@ const activatePremium = async (req, res) => {
   }
 
   const vendorId = resolveVendorId(req.user);
+
   if (!vendorId) {
     return res.status(401).json({
       success: false,
@@ -291,16 +347,25 @@ const activatePremium = async (req, res) => {
     : "premium_monthly";
 
   const db = getDB();
+
   const subscription = buildSubscriptionDoc(plan, {
     stripeSessionId: session.id,
+
     amountPaid: session.amount_total
       ? session.amount_total / 100
       : PLANS[plan].price,
   });
 
   const result = await db.collection("user").updateOne(
-    { $or: [{ _id: toId(vendorId) }, { id: vendorId }] },
-    { $set: { subscription } },
+    {
+      $or: [
+        { _id: toId(vendorId) },
+        { id: vendorId },
+      ],
+    },
+    {
+      $set: { subscription },
+    },
   );
 
   if (!result.matchedCount) {
@@ -313,6 +378,7 @@ const activatePremium = async (req, res) => {
   return res.json({
     success: true,
     message: "Payment verified! Your Premium plan is now active.",
+
     subscription: buildSubscriptionResponse(
       subscription,
       await getActiveServiceCount(db, vendorId),
@@ -322,7 +388,7 @@ const activatePremium = async (req, res) => {
 
 /**
  * GET /api/v1/subscription/payment-methods
- * Cards the vendor saved during checkout (used by the payment page).
+ * Cards the vendor saved during checkout.
  */
 router.get("/payment-methods", requireVendor, async (req, res, next) => {
   try {
@@ -331,7 +397,10 @@ router.get("/payment-methods", requireVendor, async (req, res, next) => {
     const vendor = await findVendorDoc(db, vendorId);
 
     if (!vendor) {
-      return res.status(404).json({ success: false, message: "Vendor not found." });
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found.",
+      });
     }
 
     res.json({
@@ -345,15 +414,15 @@ router.get("/payment-methods", requireVendor, async (req, res, next) => {
 
 /**
  * POST /api/v1/subscription/pay
- * In-app card payment: the browser tokenises the card with Stripe.js and the
- * server confirms a PaymentIntent with that PaymentMethod. Premium is only
- * granted once Stripe reports the intent as `succeeded`.
+ * In-app card payment: the browser tokenises the card with Stripe.js.
+ * Premium is granted once Stripe reports the intent as succeeded.
  *
  * Body: { paymentMethodId, planId?, saveCard?, useSavedCard? }
  */
 router.post("/pay", requireVendor, async (req, res, next) => {
   try {
     const stripeInstance = getStripe();
+
     if (!stripeInstance) {
       return res.status(503).json({
         success: false,
@@ -362,13 +431,17 @@ router.post("/pay", requireVendor, async (req, res, next) => {
     }
 
     const body = req.body || {};
+
     const requestedPlan = body.planId || body.plan;
+
     const plan = PREMIUM_PLANS.includes(requestedPlan)
       ? requestedPlan
       : "premium_monthly";
+
     const planInfo = PLANS[plan];
 
     const vendorId = resolveVendorId(req.user);
+
     if (!vendorId) {
       return res.status(401).json({
         success: false,
@@ -380,14 +453,21 @@ router.post("/pay", requireVendor, async (req, res, next) => {
     const vendor = await findVendorDoc(db, vendorId);
 
     if (!vendor) {
-      return res.status(404).json({ success: false, message: "Vendor not found." });
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found.",
+      });
     }
 
     const savedCards = sanitizeCards(vendor.paymentMethods);
+
     const useSavedCard = body.useSavedCard === true;
     const saveCard = body.saveCard === true && !useSavedCard;
+
     const paymentMethodId =
-      typeof body.paymentMethodId === "string" ? body.paymentMethodId.trim() : "";
+      typeof body.paymentMethodId === "string"
+        ? body.paymentMethodId.trim()
+        : "";
 
     if (useSavedCard) {
       if (!savedCards.some((card) => card.id === paymentMethodId)) {
@@ -404,7 +484,6 @@ router.post("/pay", requireVendor, async (req, res, next) => {
     }
 
     // Saved cards must live on a Stripe Customer before they can be re-used.
-    // The customer is created once and remembered on the vendor's user record.
     let customerId = vendor.stripeCustomerId || null;
 
     if (!customerId) {
@@ -412,12 +491,24 @@ router.post("/pay", requireVendor, async (req, res, next) => {
         const customer = await stripeInstance.customers.create({
           ...(req.user.email ? { email: req.user.email } : {}),
           ...(req.user.name ? { name: req.user.name } : {}),
-          metadata: { vendorId: String(vendorId) },
+
+          metadata: {
+            vendorId: String(vendorId),
+          },
         });
+
         customerId = customer.id;
+
         await db.collection("user").updateOne(
-          { $or: [{ _id: toId(vendorId) }, { id: vendorId }] },
-          { $set: { stripeCustomerId: customerId } },
+          {
+            $or: [
+              { _id: toId(vendorId) },
+              { id: vendorId },
+            ],
+          },
+          {
+            $set: { stripeCustomerId: customerId },
+          },
         );
       } catch (error) {
         if (useSavedCard) {
@@ -428,13 +519,11 @@ router.post("/pay", requireVendor, async (req, res, next) => {
               "We could not set up your saved card. Please add a new card.",
           });
         }
-        // A first-time card payment still works without a customer — we just
-        // cannot remember the card for next time.
+
+        // A first-time card payment still works without a customer.
       }
     }
 
-    // Only promise to save the card when we actually have somewhere to store
-    // it in Stripe, otherwise re-use would fail later.
     const willSaveCard = saveCard && Boolean(customerId);
 
     if (useSavedCard && customerId) {
@@ -447,35 +536,46 @@ router.post("/pay", requireVendor, async (req, res, next) => {
         if (!/already attached/i.test(error?.message || "")) {
           return res.status(402).json({
             success: false,
-            message: error?.message || "That saved card could not be used.",
+            message:
+              error?.message || "That saved card could not be used.",
           });
         }
       }
     }
 
     let intent;
+
     try {
       intent = await stripeInstance.paymentIntents.create({
         amount: planInfo.price * 100,
         currency: "usd",
         payment_method: paymentMethodId,
         confirm: true,
+
         ...(customerId ? { customer: customerId } : {}),
-        // We only ever confirm card payments in-page, so redirects are
-        // disabled (and no return_url is required).
-        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
-        // Stripe forbids `off_session: true` together with
-        // `setup_future_usage` — saving a card must be an on-session confirm.
+
+        automatic_payment_methods: {
+          enabled: true,
+          allow_redirects: "never",
+        },
+
         ...(willSaveCard
           ? { setup_future_usage: "off_session" }
           : { off_session: true }),
+
         description: `WedPlan ${planInfo.name}`,
-        ...(req.user.email ? { receipt_email: req.user.email } : {}),
-        metadata: { vendorId, planId: plan },
+
+        ...(req.user.email
+          ? { receipt_email: req.user.email }
+          : {}),
+
+        metadata: {
+          vendorId,
+          planId: plan,
+        },
       });
     } catch (error) {
-      // Card problems (declined, expired, insufficient funds...) are expected
-      // user-facing outcomes, not server errors.
+      // Card problems are expected user-facing outcomes.
       if (
         error?.type === "StripeCardError" ||
         error?.type === "StripeInvalidRequestError"
@@ -486,6 +586,7 @@ router.post("/pay", requireVendor, async (req, res, next) => {
           code: error.code || error.type,
         });
       }
+
       throw error;
     }
 
@@ -493,6 +594,7 @@ router.post("/pay", requireVendor, async (req, res, next) => {
       return res.status(402).json({
         success: false,
         code: intent.status,
+
         message:
           intent.status === "requires_action"
             ? "This card needs extra authentication. Please try a different card."
@@ -506,14 +608,19 @@ router.post("/pay", requireVendor, async (req, res, next) => {
           paymentIntentId: intent.id,
           amountPaid: intent.amount / 100,
         }),
+
         updatedAt: new Date(),
       },
     };
 
     if (willSaveCard) {
       try {
-        const pm = await stripeInstance.paymentMethods.retrieve(paymentMethodId);
+        const pm = await stripeInstance.paymentMethods.retrieve(
+          paymentMethodId,
+        );
+
         const card = pm.card || {};
+
         const entry = {
           id: pm.id,
           brand: card.brand || "card",
@@ -522,6 +629,7 @@ router.post("/pay", requireVendor, async (req, res, next) => {
           expYear: card.exp_year || null,
           createdAt: new Date(),
         };
+
         // Keep at most 4 cards, newest first, no duplicates.
         update.$set.paymentMethods = [
           entry,
@@ -533,7 +641,12 @@ router.post("/pay", requireVendor, async (req, res, next) => {
     }
 
     const result = await db.collection("user").updateOne(
-      { $or: [{ _id: toId(vendorId) }, { id: vendorId }] },
+      {
+        $or: [
+          { _id: toId(vendorId) },
+          { id: vendorId },
+        ],
+      },
       update,
     );
 
@@ -550,11 +663,15 @@ router.post("/pay", requireVendor, async (req, res, next) => {
       success: true,
       message: "Payment successful! Your Premium plan is now active.",
       paymentIntentId: intent.id,
+
       subscription: buildSubscriptionResponse(
         subscription,
         await getActiveServiceCount(db, vendorId),
       ),
-      paymentMethods: sanitizeCards(update.$set.paymentMethods || savedCards),
+
+      paymentMethods: sanitizeCards(
+        update.$set.paymentMethods || savedCards,
+      ),
     });
   } catch (error) {
     next(error);
@@ -562,9 +679,13 @@ router.post("/pay", requireVendor, async (req, res, next) => {
 });
 
 // POST /api/v1/subscription/verify-stripe-session
-router.post("/verify-stripe-session", requireVendor, (req, res, next) => {
-  Promise.resolve(activatePremium(req, res)).catch(next);
-});
+router.post(
+  "/verify-stripe-session",
+  requireVendor,
+  (req, res, next) => {
+    Promise.resolve(activatePremium(req, res)).catch(next);
+  },
+);
 
 // POST /api/v1/subscription/upgrade
 router.post("/upgrade", requireVendor, async (req, res, next) => {
@@ -574,6 +695,7 @@ router.post("/upgrade", requireVendor, async (req, res, next) => {
     if (sessionId) {
       // Old clients may send plan too; it is ignored by activatePremium.
       void plan;
+
       return await activatePremium(req, res);
     }
 
@@ -592,6 +714,7 @@ router.post("/upgrade", requireVendor, async (req, res, next) => {
 router.post("/downgrade", requireVendor, async (req, res, next) => {
   try {
     const db = getDB();
+
     const subscription = {
       plan: "free",
       status: "active",
@@ -601,9 +724,17 @@ router.post("/downgrade", requireVendor, async (req, res, next) => {
     };
 
     const vendorId = resolveVendorId(req.user);
+
     const result = await db.collection("user").updateOne(
-      { $or: [{ _id: toId(vendorId) }, { id: vendorId }] },
-      { $set: { subscription } },
+      {
+        $or: [
+          { _id: toId(vendorId) },
+          { id: vendorId },
+        ],
+      },
+      {
+        $set: { subscription },
+      },
     );
 
     if (!result.matchedCount) {
@@ -616,6 +747,7 @@ router.post("/downgrade", requireVendor, async (req, res, next) => {
     res.json({
       success: true,
       message: "Switched to the Free plan.",
+
       subscription: buildSubscriptionResponse(
         subscription,
         await getActiveServiceCount(db, vendorId),
@@ -626,4 +758,4 @@ router.post("/downgrade", requireVendor, async (req, res, next) => {
   }
 });
 
-module.exports = router;
+export default router;

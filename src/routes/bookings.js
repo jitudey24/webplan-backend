@@ -1,3 +1,4 @@
+
 /**
  * Booking routes.
  *  - Customers create bookings on available services of approved vendors.
@@ -5,16 +6,17 @@
  *  - Vendors see bookings for THEIR OWN services and can accept/reject pending ones.
  *  - Admins can view all bookings and update any booking status.
  */
-const express = require("express");
 
-const { getDB } = require("../config/db");
-const {
+import express from "express";
+
+import { getDB } from "../config/db.js";
+import {
   requireCustomer,
   requireVendor,
   requireAdmin,
   authenticateUser,
-} = require("../middleware/auth");
-const { toId, isNonEmptyString } = require("../utils/helpers");
+} from "../middleware/auth.js";
+import { toId, isNonEmptyString } from "../utils/helpers.js";
 
 const router = express.Router();
 
@@ -22,7 +24,9 @@ const BOOKING_STATUSES = ["pending", "accepted", "rejected", "cancelled"];
 
 const isFutureDate = (value) => {
   if (!isNonEmptyString(value, 8, 40)) return false;
+
   const date = new Date(value);
+
   return !Number.isNaN(date.getTime()) && date.getTime() > Date.now();
 };
 
@@ -34,12 +38,14 @@ router.post("/", requireCustomer, async (req, res, next) => {
         .status(400)
         .json({ success: false, message: "serviceId is required." });
     }
+
     if (!isFutureDate(req.body.eventDate)) {
       return res.status(400).json({
         success: false,
         message: "eventDate is required and must be a valid future date.",
       });
     }
+
     if (
       req.body.guestCount !== undefined &&
       (!Number.isInteger(req.body.guestCount) || req.body.guestCount < 1)
@@ -54,15 +60,14 @@ router.post("/", requireCustomer, async (req, res, next) => {
 
     // Locate service by ID – support both Mongo ObjectId and raw string IDs (demo data).
     const serviceId = req.body.serviceId;
-    let service = await db
-      .collection("services")
-      .findOne({
-        $or: [
-          { _id: toId(serviceId) },
-          { _id: serviceId },
-        ],
-      });
- 
+
+    const service = await db.collection("services").findOne({
+      $or: [
+        { _id: toId(serviceId) },
+        { _id: serviceId },
+      ],
+    });
+
     if (!service) {
       return res.status(404).json({
         success: false,
@@ -96,8 +101,10 @@ router.post("/", requireCustomer, async (req, res, next) => {
         role: "vendor",
         vendorApproved: true,
       });
+
       if (vendor) {
         vendorIdStr = vendor.id || (vendor._id ? vendor._id.toString() : "");
+
         await db.collection("services").updateOne(
           { _id: service._id },
           { $set: { vendorId: vendorIdStr } }
@@ -123,12 +130,14 @@ router.post("/", requireCustomer, async (req, res, next) => {
     }
 
     const now = new Date();
+
     const result = await db.collection("bookings").insertOne({
       customerId,
       vendorId: vendorIdStr,
-      serviceId: service._id && typeof service._id.toHexString === "function"
-        ? service._id.toHexString()
-        : String(service._id),
+      serviceId:
+        service._id && typeof service._id.toHexString === "function"
+          ? service._id.toHexString()
+          : String(service._id),
       serviceName: service.name || service.title || "Wedding Service",
       servicePrice: service.price ?? 0,
       serviceImage: service.image || (service.images && service.images[0]) || null,
@@ -158,14 +167,13 @@ router.post("/", requireCustomer, async (req, res, next) => {
 /** Customer booking view: only the booking owner or the owning vendor can see it. */
 const loadParticipantBooking = async (req, res) => {
   const db = getDB();
-  const booking = await db
-    .collection("bookings")
-    .findOne({
-      $or: [
-        { _id: toId(req.params.id) },
-        { _id: req.params.id },
-      ],
-    });
+
+  const booking = await db.collection("bookings").findOne({
+    $or: [
+      { _id: toId(req.params.id) },
+      { _id: req.params.id },
+    ],
+  });
 
   if (!booking) {
     res.status(404).json({ success: false, message: "Booking not found." });
@@ -182,6 +190,7 @@ const loadParticipantBooking = async (req, res) => {
       success: false,
       message: "Access denied. This booking does not belong to you.",
     });
+
     return null;
   }
 
@@ -216,23 +225,30 @@ router.get("/mine", requireCustomer, async (req, res, next) => {
     for (const booking of bookings) {
       if (!booking.serviceImage && booking.serviceId) {
         try {
-          const service = await db
-            .collection("services")
-            .findOne({
+          const service = await db.collection("services").findOne(
+            {
               $or: [
                 { _id: toId(booking.serviceId) },
                 { _id: booking.serviceId },
               ],
-            }, { projection: { image: 1, images: 1, category: 1 } });
+            },
+            { projection: { image: 1, images: 1, category: 1 } }
+          );
+
           if (service) {
-            booking.serviceImage = service.image || (service.images && service.images[0]) || null;
+            booking.serviceImage =
+              service.image || (service.images && service.images[0]) || null;
             booking.serviceCategory = service.category || null;
           }
         } catch {}
       }
     }
 
-    res.status(200).json({ success: true, total: bookings.length, bookings });
+    res.status(200).json({
+      success: true,
+      total: bookings.length,
+      bookings,
+    });
   } catch (error) {
     next(error);
   }
@@ -243,6 +259,7 @@ router.get("/vendor", requireVendor, async (req, res, next) => {
   try {
     const db = getDB();
     const vendorIdStr = String(req.user.id ?? req.user._id ?? "");
+
     const bookings = await db
       .collection("bookings")
       .find({
@@ -254,11 +271,11 @@ router.get("/vendor", requireVendor, async (req, res, next) => {
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Enrich with the couple's details and the service snapshot so the vendor
-    // can act on a request without opening another page.
+    // Enrich with the couple's details and the service snapshot
     const customerIds = [
       ...new Set(bookings.map((b) => String(b.customerId)).filter(Boolean)),
     ];
+
     const objectIds = customerIds
       .filter((id) => /^[a-f\d]{24}$/i.test(id))
       .map(toId);
@@ -266,7 +283,10 @@ router.get("/vendor", requireVendor, async (req, res, next) => {
     const customers = await db
       .collection("user")
       .find({
-        $or: [{ _id: { $in: objectIds } }, { id: { $in: customerIds } }],
+        $or: [
+          { _id: { $in: objectIds } },
+          { id: { $in: customerIds } },
+        ],
       })
       .project({ name: 1, email: 1, image: 1 })
       .toArray();
@@ -275,14 +295,16 @@ router.get("/vendor", requireVendor, async (req, res, next) => {
       customers.map((customer) => [
         customer.id || (customer._id ? customer._id.toString() : ""),
         customer,
-      ]),
+      ])
     );
 
     for (const booking of bookings) {
       const customer = customerMap.get(String(booking.customerId));
+
       booking.customerName = customer?.name || "Couple";
       booking.customerEmail = customer?.email || null;
       booking.customerImage = customer?.image || null;
+
       // `price` is the numeric alias the vendor UI reads.
       booking.price = Number(booking.servicePrice) || 0;
 
@@ -295,8 +317,9 @@ router.get("/vendor", requireVendor, async (req, res, next) => {
                 { _id: String(booking.serviceId) },
               ],
             },
-            { projection: { name: 1, image: 1, images: 1, category: 1 } },
+            { projection: { name: 1, image: 1, images: 1, category: 1 } }
           );
+
           if (service) {
             booking.serviceImage = service.image || service.images?.[0] || null;
             booking.serviceCategory = service.category || null;
@@ -306,7 +329,11 @@ router.get("/vendor", requireVendor, async (req, res, next) => {
       }
     }
 
-    res.status(200).json({ success: true, total: bookings.length, bookings });
+    res.status(200).json({
+      success: true,
+      total: bookings.length,
+      bookings,
+    });
   } catch (error) {
     next(error);
   }
@@ -318,27 +345,34 @@ router.get("/", requireAdmin, async (req, res, next) => {
     const db = getDB();
 
     const query = {};
+
     if (req.query.status && BOOKING_STATUSES.includes(req.query.status)) {
       query.status = req.query.status;
     }
 
     const total = await db.collection("bookings").countDocuments(query);
+
     const bookings = await db
       .collection("bookings")
       .find(query)
       .sort({ createdAt: -1 })
       .toArray();
 
-    res.status(200).json({ success: true, total, bookings });
+    res.status(200).json({
+      success: true,
+      total,
+      bookings,
+    });
   } catch (error) {
     next(error);
   }
 });
 
-/** GET /api/v1/bookings/:id - booking details (owner customer, owning vendor or admin) */
+/** GET /api/v1/bookings/:id - booking details */
 router.get("/:id", authenticateUser, async (req, res, next) => {
   try {
     const booking = await loadParticipantBooking(req, res);
+
     if (!booking) return;
 
     // Customers never see other customers' private information in vendor context
@@ -352,9 +386,11 @@ router.get("/:id", authenticateUser, async (req, res, next) => {
 router.patch("/:id/cancel", requireCustomer, async (req, res, next) => {
   try {
     const booking = await loadParticipantBooking(req, res);
+
     if (!booking) return;
 
     const userId = String(req.user.id ?? req.user._id ?? "");
+
     if (String(booking.customerId) !== userId && req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
@@ -370,12 +406,11 @@ router.patch("/:id/cancel", requireCustomer, async (req, res, next) => {
     }
 
     const db = getDB();
-    await db
-      .collection("bookings")
-      .updateOne(
-        { _id: booking._id },
-        { $set: { status: "cancelled", updatedAt: new Date() } }
-      );
+
+    await db.collection("bookings").updateOne(
+      { _id: booking._id },
+      { $set: { status: "cancelled", updatedAt: new Date() } }
+    );
 
     res.status(200).json({
       success: true,
@@ -399,10 +434,12 @@ router.patch("/:id/status", authenticateUser, async (req, res, next) => {
     }
 
     const booking = await loadParticipantBooking(req, res);
+
     if (!booking) return;
 
     const userId = String(req.user.id ?? req.user._id ?? "");
-    const isVendor = req.user.role === "vendor" && String(booking.vendorId) === userId;
+    const isVendor =
+      req.user.role === "vendor" && String(booking.vendorId) === userId;
     const isAdmin = req.user.role === "admin";
 
     if (!isVendor && !isAdmin) {
@@ -421,6 +458,7 @@ router.patch("/:id/status", authenticateUser, async (req, res, next) => {
           message: "Vendors can only accept or reject bookings.",
         });
       }
+
       if (booking.status !== "pending") {
         return res.status(400).json({
           success: false,
@@ -430,12 +468,11 @@ router.patch("/:id/status", authenticateUser, async (req, res, next) => {
     }
 
     const db = getDB();
-    await db
-      .collection("bookings")
-      .updateOne(
-        { _id: booking._id },
-        { $set: { status, updatedAt: new Date() } }
-      );
+
+    await db.collection("bookings").updateOne(
+      { _id: booking._id },
+      { $set: { status, updatedAt: new Date() } }
+    );
 
     res.status(200).json({
       success: true,
@@ -446,4 +483,4 @@ router.patch("/:id/status", authenticateUser, async (req, res, next) => {
   }
 });
 
-module.exports = router;
+export default router;

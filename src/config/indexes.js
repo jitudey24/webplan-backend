@@ -1,9 +1,9 @@
+
 /**
  * Ensures the required MongoDB indexes exist.
  * Better Auth already manages indexes for its own collections (user, session, account...);
  * here we add the application-level indexes for services and bookings.
  */
-
 
 const ensureIndexes = async (db) => {
   const created = [];
@@ -30,9 +30,10 @@ const ensureIndexes = async (db) => {
   await db
     .collection("session")
     .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
   created.push("session.expiresAt (TTL)");
 
   console.log(`✅ Database indexes ready: ${created.join(", ")}`);
 };
 
-module.exports = { ensureIndexes };
+export { ensureIndexes };
